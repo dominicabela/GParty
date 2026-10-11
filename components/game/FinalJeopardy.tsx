@@ -8,10 +8,9 @@ import { Input } from "@/components/ui/input";
 
 import { useGame } from "./GameProvider";
 
-const FINAL_TIMER = 30;
-
 function WagerEntry({ teamId, eligible }: { teamId: string; eligible: number }) {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const [value, setValue] = useState<string>("");
   const [revealed, setRevealed] = useState(false);
   const team = state.teams.find((t) => t.id === teamId);
@@ -34,7 +33,12 @@ function WagerEntry({ teamId, eligible }: { teamId: string; eligible: number }) 
           ${team.score.toLocaleString()}
         </span>
       </div>
-      {!submitted ? (
+      {!submitted && isViewer ? (
+        <div className="mt-3 animate-pulse text-sm uppercase tracking-widest text-jeopardy-cream/60">
+          Waiting for wager...
+        </div>
+      ) : null}
+      {!submitted && !isViewer ? (
         <form
           className="mt-3 flex items-center gap-2"
           onSubmit={(e) => {
@@ -83,17 +87,19 @@ function WagerEntry({ teamId, eligible }: { teamId: string; eligible: number }) 
             </Button>
           ) : null}
         </form>
-      ) : (
+      ) : null}
+      {submitted ? (
         <div className="mt-3 flex items-center gap-2 text-emerald-300">
           <Check className="size-4" /> Wager locked
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
 function AnswerRow({ teamId }: { teamId: string }) {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const team = state.teams.find((t) => t.id === teamId);
   const answer = state.finalAnswers[teamId];
   if (!team) return null;
@@ -108,37 +114,47 @@ function AnswerRow({ teamId }: { teamId: string }) {
           Wager ${state.finalWagers[teamId]?.toLocaleString() ?? 0}
         </span>
       </div>
-      <Input
-        className="mt-3"
-        placeholder="Team's written response"
-        value={answer?.text ?? ""}
-        onChange={(e) =>
-          dispatch({
-            type: "FINAL_SET_ANSWER",
-            teamId,
-            text: e.target.value,
-          })
-        }
-      />
+      {isViewer ? (
+        <p className="mt-3 min-h-6 text-left text-clue-text">
+          {answer?.text || "—"}
+        </p>
+      ) : (
+        <Input
+          className="mt-3"
+          placeholder="Team's written response"
+          value={answer?.text ?? ""}
+          onChange={(e) =>
+            dispatch({
+              type: "FINAL_SET_ANSWER",
+              teamId,
+              text: e.target.value,
+            })
+          }
+        />
+      )}
       <div className="mt-3 flex items-center gap-2">
-        <Button
-          variant="success"
-          size="sm"
-          onClick={() =>
-            dispatch({ type: "FINAL_MARK_ANSWER", teamId, correct: true })
-          }
-        >
-          <Check className="size-4" /> Correct
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={() =>
-            dispatch({ type: "FINAL_MARK_ANSWER", teamId, correct: false })
-          }
-        >
-          <X className="size-4" /> Incorrect
-        </Button>
+        {!isViewer ? (
+          <>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() =>
+                dispatch({ type: "FINAL_MARK_ANSWER", teamId, correct: true })
+              }
+            >
+              <Check className="size-4" /> Correct
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() =>
+                dispatch({ type: "FINAL_MARK_ANSWER", teamId, correct: false })
+              }
+            >
+              <X className="size-4" /> Incorrect
+            </Button>
+          </>
+        ) : null}
         {answer?.correct === true ? (
           <span className="text-sm uppercase tracking-widest text-emerald-300">
             +${(state.finalWagers[teamId] ?? 0).toLocaleString()}
@@ -154,24 +170,17 @@ function AnswerRow({ teamId }: { teamId: string }) {
 }
 
 export function FinalJeopardy() {
-  const { state, dispatch } = useGame();
-  const [timer, setTimer] = useState(FINAL_TIMER);
-  const [running, setRunning] = useState(false);
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
+  const timer = state.finalTimer;
+  const running = state.finalTimerRunning;
 
+  // Only the host ticks the timer; viewers receive it via state sync
   useEffect(() => {
-    setTimer(FINAL_TIMER);
-    setRunning(false);
-  }, [state.finalPhase]);
-
-  useEffect(() => {
-    if (!running) return;
-    if (timer <= 0) {
-      setRunning(false);
-      return;
-    }
-    const id = setTimeout(() => setTimer((t) => t - 1), 1000);
+    if (isViewer || !running || timer <= 0) return;
+    const id = setTimeout(() => dispatch({ type: "FINAL_TIMER_TICK" }), 1000);
     return () => clearTimeout(id);
-  }, [running, timer]);
+  }, [isViewer, running, timer, dispatch]);
 
   if (!state.data) return null;
   const final = state.data.final;
@@ -202,14 +211,16 @@ export function FinalJeopardy() {
             >
               {final.category}
             </h1>
-            <div className="mt-10">
-              <Button
-                size="lg"
-                onClick={() => dispatch({ type: "FINAL_REVEAL_CATEGORY" })}
-              >
-                Reveal to teams · take wagers
-              </Button>
-            </div>
+            {!isViewer ? (
+              <div className="mt-10">
+                <Button
+                  size="lg"
+                  onClick={() => dispatch({ type: "FINAL_REVEAL_CATEGORY" })}
+                >
+                  Reveal to teams · take wagers
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -230,15 +241,17 @@ export function FinalJeopardy() {
                 />
               ))}
             </div>
-            <div className="mt-8 flex items-center justify-end">
-              <Button
-                size="lg"
-                onClick={() => dispatch({ type: "FINAL_BEGIN_CLUE" })}
-                disabled={!allWagersIn}
-              >
-                Show the clue
-              </Button>
-            </div>
+            {!isViewer ? (
+              <div className="mt-8 flex items-center justify-end">
+                <Button
+                  size="lg"
+                  onClick={() => dispatch({ type: "FINAL_BEGIN_CLUE" })}
+                  disabled={!allWagersIn}
+                >
+                  Show the clue
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -258,36 +271,39 @@ export function FinalJeopardy() {
                 <span className="font-display text-xl tabular-nums text-jeopardy-gold-bright">
                   {timer.toString().padStart(2, "0")}s
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setRunning((r) => !r)}
-                  className="rounded p-1 text-white/80 hover:bg-white/10"
-                  aria-label={running ? "Pause timer" : "Start timer"}
-                >
-                  {running ? (
-                    <Pause className="size-4" />
-                  ) : (
-                    <Play className="size-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTimer(FINAL_TIMER);
-                    setRunning(false);
-                  }}
-                  className="rounded p-1 text-white/80 hover:bg-white/10"
-                  aria-label="Reset timer"
-                >
-                  <RotateCcw className="size-4" />
-                </button>
+                {!isViewer ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: "FINAL_TIMER_TOGGLE" })}
+                      className="rounded p-1 text-white/80 hover:bg-white/10"
+                      aria-label={running ? "Pause timer" : "Start timer"}
+                    >
+                      {running ? (
+                        <Pause className="size-4" />
+                      ) : (
+                        <Play className="size-4" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dispatch({ type: "FINAL_TIMER_RESET" })}
+                      className="rounded p-1 text-white/80 hover:bg-white/10"
+                      aria-label="Reset timer"
+                    >
+                      <RotateCcw className="size-4" />
+                    </button>
+                  </>
+                ) : null}
               </div>
-              <Button
-                size="lg"
-                onClick={() => dispatch({ type: "FINAL_BEGIN_ANSWERS" })}
-              >
-                Time&apos;s up · grade answers
-              </Button>
+              {!isViewer ? (
+                <Button
+                  size="lg"
+                  onClick={() => dispatch({ type: "FINAL_BEGIN_ANSWERS" })}
+                >
+                  Time&apos;s up · grade answers
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -308,15 +324,17 @@ export function FinalJeopardy() {
                 <AnswerRow key={t.id} teamId={t.id} />
               ))}
             </div>
-            <div className="mt-8 flex items-center justify-end">
-              <Button
-                size="lg"
-                disabled={!allMarked}
-                onClick={() => dispatch({ type: "FINAL_REVEAL" })}
-              >
-                Reveal final scores
-              </Button>
-            </div>
+            {!isViewer ? (
+              <div className="mt-8 flex items-center justify-end">
+                <Button
+                  size="lg"
+                  disabled={!allMarked}
+                  onClick={() => dispatch({ type: "FINAL_REVEAL" })}
+                >
+                  Reveal final scores
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -349,11 +367,13 @@ export function FinalJeopardy() {
                   </li>
                 ))}
             </ul>
-            <div className="mt-8 flex items-center justify-end">
-              <Button size="lg" onClick={() => dispatch({ type: "END_GAME" })}>
-                Crown the champion
-              </Button>
-            </div>
+            {!isViewer ? (
+              <div className="mt-8 flex items-center justify-end">
+                <Button size="lg" onClick={() => dispatch({ type: "END_GAME" })}>
+                  Crown the champion
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

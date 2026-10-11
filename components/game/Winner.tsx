@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 import { useGame } from "./GameProvider";
 
 export function Winner() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const sorted = [...state.teams].sort((a, b) => b.score - a.score);
   const champion = sorted[0];
   const tied =
@@ -57,11 +58,13 @@ export function Winner() {
           ))}
         </ol>
 
-        <div className="mt-10 flex items-center justify-center gap-3">
-          <Button size="lg" onClick={() => dispatch({ type: "RESET" })}>
-            New game
-          </Button>
-        </div>
+        {!isViewer ? (
+          <div className="mt-10 flex items-center justify-center gap-3">
+            <Button size="lg" onClick={() => dispatch({ type: "RESET" })}>
+              New game
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

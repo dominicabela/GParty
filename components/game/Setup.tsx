@@ -21,12 +21,15 @@ function makeTeam(name: string): Team {
 }
 
 export function Setup() {
-  const { state, generate } = useGame();
+  const { state, generate, realtimeAvailable, sessionError, joinSession } =
+    useGame();
   const [theme, setTheme] = useState("");
   const [teams, setTeams] = useState<Team[]>(() => [
     makeTeam("Team 1"),
     makeTeam("Team 2"),
   ]);
+  const [joinCode, setJoinCode] = useState("");
+  const [joining, setJoining] = useState(false);
 
   const canStart =
     theme.trim().length > 1 &&
@@ -50,6 +53,14 @@ export function Setup() {
   function start() {
     if (!canStart) return;
     void generate(theme.trim(), teams.map((t) => ({ ...t, name: t.name.trim() })));
+  }
+
+  async function join(e: React.FormEvent) {
+    e.preventDefault();
+    if (joinCode.length !== 4 || joining) return;
+    setJoining(true);
+    await joinSession(joinCode);
+    setJoining(false);
   }
 
   return (
@@ -128,6 +139,36 @@ export function Setup() {
             Generate Game
           </Button>
         </div>
+
+        {realtimeAvailable ? (
+          <div className="mt-10 border-t border-white/10 pt-6">
+            <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
+              Join a game
+            </label>
+            <p className="mt-1 text-xs text-white/50">
+              Enter the 4-digit code from the host to watch their game on this
+              device.
+            </p>
+            <form className="mt-3 flex items-center gap-2" onSubmit={join}>
+              <Input
+                value={joinCode}
+                onChange={(e) =>
+                  setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                inputMode="numeric"
+                placeholder="0000"
+                className="w-28 text-center font-display text-xl tracking-[0.4em]"
+                aria-label="Session code"
+              />
+              <Button type="submit" disabled={joinCode.length !== 4 || joining}>
+                {joining ? "Joining..." : "Join"}
+              </Button>
+            </form>
+            {sessionError ? (
+              <p className="mt-2 text-sm text-red-300">{sessionError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

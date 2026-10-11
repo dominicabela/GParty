@@ -11,7 +11,8 @@ function formatValue(value: number): string {
 }
 
 export function Board() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const pending = state.pendingSelection;
 
   useEffect(() => {
@@ -53,7 +54,9 @@ export function Board() {
 
             const baseClass = played
               ? "rounded-sm border-2 border-black bg-neutral-900"
-              : "rounded-sm border-2 border-black bg-neutral-950 transition hover:brightness-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600";
+              : isViewer
+                ? "rounded-sm border-2 border-black bg-neutral-950"
+                : "rounded-sm border-2 border-black bg-neutral-950 transition hover:brightness-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600";
             const highlightClass = isPending
               ? " animate-clue-highlight relative z-10"
               : "";
@@ -68,7 +71,7 @@ export function Board() {
                     selection: { categoryIdx: ci, clueIdx: ri },
                   })
                 }
-                disabled={played || !!pending}
+                disabled={played || !!pending || isViewer}
                 className={baseClass + highlightClass}
                 aria-label={
                   played ? "Clue already played" : `Select ${formatValue(clue.value)}`

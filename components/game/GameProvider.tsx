@@ -11,11 +11,24 @@ import {
 import { buildRoundData } from "@/lib/game/daily-double";
 import { initialState, reducer, type Action } from "@/lib/game/reducer";
 import type { GameState, RawRoundData, Team } from "@/lib/game/types";
+import {
+  useConvexGameSync,
+  useStubGameSync,
+  type GameSync,
+  type SessionRole,
+} from "@/lib/realtime/useGameSync";
 
 type GameContextValue = {
   state: GameState;
   dispatch: React.Dispatch<Action>;
   generate: (theme: string, teams: Team[]) => Promise<void>;
+  role: SessionRole | null;
+  sessionCode: string | null;
+  viewerCount: number;
+  sessionError: string | null;
+  hasRemoteState: boolean;
+  realtimeAvailable: boolean;
+  joinSession: (code: string) => Promise<boolean>;
 };
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -38,11 +51,30 @@ async function fetchPart<T>(
   return JSON.parse(json.message) as T;
 }
 
-export function GameProvider({ children }: { children: React.ReactNode }) {
+function GameProviderInner({
+  children,
+  useSync,
+}: {
+  children: React.ReactNode;
+  useSync: (state: GameState, dispatch: React.Dispatch<Action>) => GameSync;
+}) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const sync = useSync(state, dispatch);
+  const { role, startHosting } = sync;
+
+  // Viewers are read-only: everything except remote hydration is ignored
+  const guardedDispatch = useCallback(
+    (action: Action) => {
+      if (role === "viewer" && action.type !== "HYDRATE_STATE") return;
+      dispatch(action);
+    },
+    [role],
+  );
 
   const generate = useCallback(
     async (theme: string, teams: Team[]) => {
+      // Best-effort session start; solo play continues if realtime is unavailable
+      void startHosting();
       dispatch({ type: "SET_TEAMS", teams });
       dispatch({ type: "START_GENERATING" });
       try {
@@ -65,15 +97,60 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: "RESET" });
       }
     },
-    [],
+    [startHosting],
   );
 
+  const {
+    sessionCode,
+    viewerCount,
+    sessionError,
+    hasRemoteState,
+    realtimeAvailable,
+    joinSession,
+  } = sync;
+
   const value = useMemo(
-    () => ({ state, dispatch, generate }),
-    [state, generate],
+    () => ({
+      state,
+      dispatch: guardedDispatch,
+      generate,
+      role,
+      sessionCode,
+      viewerCount,
+      sessionError,
+      hasRemoteState,
+      realtimeAvailable,
+      joinSession,
+    }),
+    [
+      state,
+      guardedDispatch,
+      generate,
+      role,
+      sessionCode,
+      viewerCount,
+      sessionError,
+      hasRemoteState,
+      realtimeAvailable,
+      joinSession,
+    ],
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+}
+
+export function GameProvider({ children }: { children: React.ReactNode }) {
+  return <GameProviderInner useSync={useStubGameSync}>{children}</GameProviderInner>;
+}
+
+export function ConnectedGameProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <GameProviderInner useSync={useConvexGameSync}>{children}</GameProviderInner>
+  );
 }
 
 export function useGame() {

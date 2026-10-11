@@ -7,28 +7,41 @@ import { Button } from "@/components/ui/button";
 import { useGame } from "./GameProvider";
 
 const READING_SECONDS = 10;
-
-type Phase = "reading" | "scoring";
+const ANSWER_SECONDS = 5;
 
 export function ClueScreen() {
-  const { state, dispatch } = useGame();
-  const [phase, setPhase] = useState<Phase>("reading");
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
+  const phase = state.cluePhase;
+  const canSkip = phase === "reading" && !isViewer;
+  // Countdown stays device-local; it resets with the clue so host and viewers stay in sync
   const [timer, setTimer] = useState(READING_SECONDS);
+  const [answerTimer, setAnswerTimer] = useState(ANSWER_SECONDS);
 
   useEffect(() => {
-    setPhase("reading");
     setTimer(READING_SECONDS);
+    setAnswerTimer(ANSWER_SECONDS);
   }, [state.selected?.categoryIdx, state.selected?.clueIdx, state.round]);
 
   useEffect(() => {
     if (phase !== "reading") return;
     if (timer <= 0) {
-      setPhase("scoring");
+      dispatch({ type: "CLUE_SHOW_ANSWER" });
       return;
     }
     const id = setTimeout(() => setTimer((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [phase, timer]);
+  }, [phase, timer, dispatch]);
+
+  useEffect(() => {
+    if (phase !== "scoring") return;
+    if (answerTimer <= 0) {
+      dispatch({ type: "AUTO_ADVANCE" });
+      return;
+    }
+    const id = setTimeout(() => setAnswerTimer((t) => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [phase, answerTimer, dispatch]);
 
   if (!state.data || !state.selected) return null;
   const cats =
@@ -39,25 +52,27 @@ export function ClueScreen() {
 
   const isDailyDouble = clue.isDailyDouble;
   const value = isDailyDouble ? state.ddWager : clue.value;
-  const progress = Math.max(0, Math.min(1, timer / READING_SECONDS));
+  const duration = phase === "reading" ? READING_SECONDS : ANSWER_SECONDS;
+  const remaining = phase === "reading" ? timer : answerTimer;
+  const progress = Math.max(0, Math.min(1, remaining / duration));
 
   return (
     <div className="relative flex h-full w-full flex-col bg-black">
       <div
         className={
           "relative flex flex-1 flex-col items-center justify-center px-6 py-8 text-center" +
-          (phase === "reading" ? " cursor-pointer" : "")
+          (canSkip ? " cursor-pointer" : "")
         }
-        onClick={phase === "reading" ? () => setPhase("scoring") : undefined}
-        role={phase === "reading" ? "button" : undefined}
-        tabIndex={phase === "reading" ? 0 : -1}
-        aria-label={phase === "reading" ? "Skip to scoring" : undefined}
+        onClick={canSkip ? () => dispatch({ type: "CLUE_SHOW_ANSWER" }) : undefined}
+        role={canSkip ? "button" : undefined}
+        tabIndex={canSkip ? 0 : -1}
+        aria-label={canSkip ? "Skip to scoring" : undefined}
         onKeyDown={
-          phase === "reading"
+          canSkip
             ? (e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setPhase("scoring");
+                  dispatch({ type: "CLUE_SHOW_ANSWER" });
                 }
               }
             : undefined
@@ -95,17 +110,15 @@ export function ClueScreen() {
           ) : null}
         </div>
 
-        {phase === "reading" ? (
-          <div className="pointer-events-none absolute bottom-0 left-0 h-2 w-full bg-black/30">
-            <div
-              className="h-full bg-jeopardy-gold-bright/50 transition-[width] duration-1000 ease-linear"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
-        ) : null}
+        <div className="pointer-events-none absolute bottom-0 left-0 h-2 w-full bg-black/30">
+          <div
+            className="h-full bg-jeopardy-gold-bright/50 transition-[width] duration-1000 ease-linear"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
       </div>
 
-      {phase === "scoring" ? (
+      {phase === "scoring" && !isViewer ? (
         <div className="animate-fade-in border-y border-black/40 bg-neutral-800/95 px-3 py-2 sm:px-4">
           <div className="flex flex-wrap items-center justify-center gap-2">
             <span className="mr-2 font-display text-xs uppercase tracking-widest text-jeopardy-cream/70 sm:text-sm">

@@ -7,17 +7,19 @@ import type {
 } from "./types";
 
 export type Action =
+  | { type: "HYDRATE_STATE"; state: GameState }
   | { type: "SET_TEAMS"; teams: Team[] }
   | { type: "SET_ERROR"; error: string | null }
   | { type: "START_GENERATING" }
   | { type: "LOAD_GAME"; data: RoundData }
   | { type: "BEGIN_ROUND" }
   | { type: "SELECT_CLUE"; selection: Selection }
+  | { type: "CLUE_SHOW_ANSWER" }
   | { type: "CLOSE_CLUE" }
   | { type: "AUTO_ADVANCE" }
   | { type: "MARK_TEAM"; teamId: string; result: "correct" | "incorrect" }
   | { type: "ADJUST_SCORE"; teamId: string; delta: number }
-  | { type: "DD_PICK_TEAM"; teamId: string }
+  | { type: "DD_TO_WAGER" }
   | { type: "DD_SET_WAGER"; amount: number }
   | { type: "DD_REVEAL" }
   | { type: "ADVANCE_TO_DOUBLE" }
@@ -33,8 +35,13 @@ export type Action =
       correct: boolean;
     }
   | { type: "FINAL_REVEAL" }
+  | { type: "FINAL_TIMER_TOGGLE" }
+  | { type: "FINAL_TIMER_RESET" }
+  | { type: "FINAL_TIMER_TICK" }
   | { type: "END_GAME" }
   | { type: "RESET" };
+
+export const FINAL_TIMER_SECONDS = 30;
 
 export const initialState: GameState = {
   screen: "setup",
@@ -43,12 +50,15 @@ export const initialState: GameState = {
   data: null,
   selected: null,
   pendingSelection: null,
+  cluePhase: "reading",
   ddPhase: "splash",
   ddWager: 0,
   ddTeamId: null,
   finalPhase: "category",
   finalWagers: {},
   finalAnswers: {},
+  finalTimer: FINAL_TIMER_SECONDS,
+  finalTimerRunning: false,
   loadingError: null,
 };
 
@@ -126,6 +136,9 @@ function adjustScore(teams: Team[], teamId: string, delta: number): Team[] {
 
 export function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
+    case "HYDRATE_STATE":
+      return action.state;
+
     case "SET_TEAMS":
       return { ...state, teams: action.teams };
 
@@ -153,13 +166,17 @@ export function reducer(state: GameState, action: Action): GameState {
         cats[action.selection.categoryIdx]?.clues[action.selection.clueIdx];
       if (!clue || clue.played) return state;
       if (clue.isDailyDouble) {
+        // A random team is drawn to answer the Daily Double
+        const drawn =
+          state.teams[Math.floor(Math.random() * state.teams.length)];
         return {
           ...state,
           selected: action.selection,
           pendingSelection: null,
           screen: "dailyDouble",
+          cluePhase: "reading",
           ddPhase: "splash",
-          ddTeamId: null,
+          ddTeamId: drawn?.id ?? null,
           ddWager: 0,
         };
       }
@@ -168,11 +185,16 @@ export function reducer(state: GameState, action: Action): GameState {
         selected: action.selection,
         pendingSelection: null,
         screen: "clue",
+        cluePhase: "reading",
       };
     }
 
-    case "DD_PICK_TEAM":
-      return { ...state, ddTeamId: action.teamId, ddPhase: "wager" };
+    case "CLUE_SHOW_ANSWER":
+      return { ...state, cluePhase: "scoring" };
+
+    case "DD_TO_WAGER":
+      if (!state.ddTeamId) return state;
+      return { ...state, ddPhase: "wager" };
 
     case "DD_SET_WAGER": {
       const team = state.teams.find((t) => t.id === state.ddTeamId);
@@ -185,7 +207,7 @@ export function reducer(state: GameState, action: Action): GameState {
     }
 
     case "DD_REVEAL":
-      return { ...state, screen: "clue" };
+      return { ...state, screen: "clue", cluePhase: "reading" };
 
     case "MARK_TEAM": {
       const clue = getSelectedClue(state);
@@ -293,7 +315,12 @@ export function reducer(state: GameState, action: Action): GameState {
       };
 
     case "FINAL_REVEAL_CATEGORY":
-      return { ...state, finalPhase: "wagers" };
+      return {
+        ...state,
+        finalPhase: "wagers",
+        finalTimer: FINAL_TIMER_SECONDS,
+        finalTimerRunning: false,
+      };
 
     case "FINAL_SET_WAGER": {
       const team = state.teams.find((t) => t.id === action.teamId);
@@ -307,10 +334,31 @@ export function reducer(state: GameState, action: Action): GameState {
     }
 
     case "FINAL_BEGIN_CLUE":
-      return { ...state, finalPhase: "clue" };
+      return {
+        ...state,
+        finalPhase: "clue",
+        finalTimer: FINAL_TIMER_SECONDS,
+        finalTimerRunning: false,
+      };
 
     case "FINAL_BEGIN_ANSWERS":
-      return { ...state, finalPhase: "answers" };
+      return {
+        ...state,
+        finalPhase: "answers",
+        finalTimer: FINAL_TIMER_SECONDS,
+        finalTimerRunning: false,
+      };
+
+    case "FINAL_TIMER_TOGGLE":
+      return { ...state, finalTimerRunning: !state.finalTimerRunning };
+
+    case "FINAL_TIMER_RESET":
+      return { ...state, finalTimer: FINAL_TIMER_SECONDS, finalTimerRunning: false };
+
+    case "FINAL_TIMER_TICK": {
+      const next = Math.max(0, state.finalTimer - 1);
+      return { ...state, finalTimer: next, finalTimerRunning: next > 0 };
+    }
 
     case "FINAL_SET_ANSWER": {
       const prev = state.finalAnswers[action.teamId] ?? {
