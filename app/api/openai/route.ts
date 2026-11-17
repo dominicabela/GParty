@@ -49,7 +49,7 @@ Output shape:
 }`,
   double: `${sharedRules}
 
-Generate a "Double Jeopardy" round: 6 categories, each with 5 clues (values 400, 800, 1200, 1600, 2000), in increasing difficulty. The 6 category names must all be unique. Pick deeper, more advanced, or more niche category angles than a typical first-round board would use, so these categories are unlikely to duplicate a first round on the same theme.
+Generate a "Double Jeopardy" round: 6 categories, each with 5 clues (values 400, 800, 1200, 1600, 2000), in increasing difficulty. The 6 category names must all be unique. Pick deeper, more advanced, or more niche category angles than a typical first-round board would use.
 
 Output shape:
 
@@ -67,7 +67,7 @@ Output shape:
 }`,
   final: `${sharedRules}
 
-Generate a single "Final Jeopardy" clue: one category, one challenging clue, one factual answer. It should be hard but fair, and follows the same no-overlap rule above.
+Generate a single "Final Jeopardy" clue: one category, one challenging clue, one factual answer. It should be hard but fair, and follows the same no-overlap rule above. If the THEME contains two topics joined by "+", the clue must connect or blend both topics.
 
 Output shape:
 

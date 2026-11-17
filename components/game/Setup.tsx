@@ -23,7 +23,8 @@ function makeTeam(name: string): Team {
 export function Setup() {
   const { state, generate, realtimeAvailable, sessionError, joinSession } =
     useGame();
-  const [theme, setTheme] = useState("");
+  const [jeopardyTopic, setJeopardyTopic] = useState("");
+  const [doubleTopic, setDoubleTopic] = useState("");
   const [teams, setTeams] = useState<Team[]>(() => [
     makeTeam("Team 1"),
     makeTeam("Team 2"),
@@ -32,7 +33,8 @@ export function Setup() {
   const [joining, setJoining] = useState(false);
 
   const canStart =
-    theme.trim().length > 1 &&
+    jeopardyTopic.trim().length > 1 &&
+    doubleTopic.trim().length > 1 &&
     teams.length >= 2 &&
     teams.every((t) => t.name.trim().length > 0);
 
@@ -52,7 +54,10 @@ export function Setup() {
 
   function start() {
     if (!canStart) return;
-    void generate(theme.trim(), teams.map((t) => ({ ...t, name: t.name.trim() })));
+    void generate(
+      { jeopardy: jeopardyTopic.trim(), double: doubleTopic.trim() },
+      teams.map((t) => ({ ...t, name: t.name.trim() })),
+    );
   }
 
   async function join(e: React.FormEvent) {
@@ -79,19 +84,31 @@ export function Setup() {
           </div>
         ) : null}
 
-        <div className="mt-8 space-y-2">
-          <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
-            Theme or Topic
-          </label>
-          <Input
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-            placeholder='e.g. "1990s pop culture", "World capitals", "Marvel movies"'
-            autoFocus
-          />
+        <div className="mt-8 space-y-4">
+          <div className="space-y-2">
+            <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
+              Round 1 Topic (Jeopardy!)
+            </label>
+            <Input
+              value={jeopardyTopic}
+              onChange={(e) => setJeopardyTopic(e.target.value)}
+              placeholder='e.g. "1990s pop culture"'
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
+              Round 2 Topic (Double Jeopardy!)
+            </label>
+            <Input
+              value={doubleTopic}
+              onChange={(e) => setDoubleTopic(e.target.value)}
+              placeholder='e.g. "World capitals"'
+            />
+          </div>
           <p className="text-xs text-white/50">
-            We&apos;ll generate 12 categories (6 per round) plus a Final Jeopardy clue
-            around this theme.
+            6 categories per round from each topic, plus a Final Jeopardy clue
+            blending both.
           </p>
         </div>
 
