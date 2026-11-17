@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import type { Team } from "@/lib/game/types";
 
 import { useGame } from "./GameProvider";
+import { GraphPaperBackground } from "./GraphPaperBackground";
 
 function makeTeam(name: string): Team {
   return {
@@ -31,6 +32,8 @@ export function Setup() {
   ]);
   const [joinCode, setJoinCode] = useState("");
   const [joining, setJoining] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const canStart =
     jeopardyTopic.trim().length > 1 &&
@@ -52,6 +55,37 @@ export function Setup() {
     setTeams((prev) => (prev.length <= 2 ? prev : prev.filter((t) => t.id !== id)));
   }
 
+  async function suggestTopics() {
+    if (suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const res = await fetch("/api/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          part: "suggest",
+          avoid: [jeopardyTopic.trim(), doubleTopic.trim()].filter(Boolean),
+        }),
+      });
+      const data = (await res.json()) as {
+        jeopardy?: string;
+        double?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.jeopardy || !data.double) {
+        setSuggestError(data.error ?? "Could not suggest topics. Try again.");
+        return;
+      }
+      setJeopardyTopic(data.jeopardy);
+      setDoubleTopic(data.double);
+    } catch {
+      setSuggestError("Could not suggest topics. Try again.");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
   function start() {
     if (!canStart) return;
     void generate(
@@ -69,14 +103,18 @@ export function Setup() {
   }
 
   return (
-    <div className="board-gradient flex h-full w-full items-center justify-center overflow-y-auto px-4 py-10">
-      <div className="w-full max-w-2xl rounded-xl border border-jeopardy-gold/40 bg-jeopardy-blue-darker/80 p-8 shadow-2xl backdrop-blur">
-        <h1 className="font-display text-5xl tracking-wider text-jeopardy-gold-bright text-letterpress sm:text-6xl">
-          GParty
-        </h1>
-        <p className="mt-2 text-sm uppercase tracking-[0.3em] text-jeopardy-cream/80">
-          AI-powered Jeopardy
-        </p>
+    <div className="graph-paper relative h-full w-full">
+      <GraphPaperBackground />
+      <div className="absolute inset-0 flex items-center justify-center overflow-y-auto px-4 py-10">
+      <div className="w-full max-w-2xl rounded-none border border-jeopardy-gold/40 bg-jeopardy-blue-darker/80 p-8 shadow-2xl backdrop-blur">
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="font-display text-5xl tracking-wider text-jeopardy-gold-bright sm:text-6xl">
+            GParty
+          </h1>
+          <p className="text-right text-sm uppercase tracking-[0.3em] text-jeopardy-cream/80">
+            AI-powered Jeopardy
+          </p>
+        </div>
 
         {state.loadingError ? (
           <div className="mt-4 rounded-md border border-red-500/50 bg-red-500/15 px-3 py-2 text-sm text-red-200">
@@ -84,10 +122,25 @@ export function Setup() {
           </div>
         ) : null}
 
-        <div className="mt-8 space-y-4">
-          <div className="space-y-2">
+        <div className="mt-8">
+          <div className="flex items-center justify-between">
             <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
-              Round 1 Topic (Jeopardy!)
+              Topics
+            </label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void suggestTopics()}
+              disabled={suggesting}
+            >
+              <Sparkles className="size-4" />
+              {suggesting ? "Suggesting..." : "Suggest topics"}
+            </Button>
+          </div>
+        <div className="mt-3 space-y-4">
+          <div className="space-y-2">
+            <label className="font-display text-xs uppercase tracking-widest text-jeopardy-cream/70">
+              Round 1 (Jeopardy!)
             </label>
             <Input
               value={jeopardyTopic}
@@ -97,8 +150,8 @@ export function Setup() {
             />
           </div>
           <div className="space-y-2">
-            <label className="font-display text-sm uppercase tracking-widest text-jeopardy-cream">
-              Round 2 Topic (Double Jeopardy!)
+            <label className="font-display text-xs uppercase tracking-widest text-jeopardy-cream/70">
+              Round 2 (Double Jeopardy!)
             </label>
             <Input
               value={doubleTopic}
@@ -110,6 +163,10 @@ export function Setup() {
             6 categories per round from each topic, plus a Final Jeopardy clue
             blending both.
           </p>
+          {suggestError ? (
+            <p className="text-sm text-red-300">{suggestError}</p>
+          ) : null}
+        </div>
         </div>
 
         <div className="mt-8">
@@ -186,6 +243,7 @@ export function Setup() {
             ) : null}
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );
