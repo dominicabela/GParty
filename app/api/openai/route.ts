@@ -14,16 +14,11 @@ function getClient(): OpenAI {
   return _client;
 }
 
-const systemPrompt = `You write Jeopardy! game data as RFC 8259 compliant JSON. The user gives you a THEME and a list of TEAM NAMES. You generate:
-
-1. A "Jeopardy" round: 6 categories, each with 5 clues (values 200, 400, 600, 800, 1000), in increasing difficulty.
-2. A "Double Jeopardy" round: 6 different categories, each with 5 clues (values 400, 800, 1200, 1600, 2000), in increasing difficulty.
-3. A single "Final Jeopardy" clue: one category, one challenging clue, one factual answer.
+const sharedRules = `You write Jeopardy! game data as RFC 8259 compliant JSON. The user gives you a THEME and a list of TEAM NAMES.
 
 RULES:
 - All clues must have a single specific factual answer. No matters of opinion.
 - Categories must relate to the user's THEME but be diverse.
-- The 12 round-category names must all be unique.
 - (Real Jeopardy: the host reads the "answer" and contestants supply the "question". Internally we store them as { question, answer } where "question" is the prompt the host reads aloud and "answer" is the correct response.)
 - The "question" text MUST NOT contain the "answer", any part of the answer, or any content word that appears in the answer. Specifically:
   - Do not include the full answer string in the question.
@@ -31,8 +26,14 @@ RULES:
   - Do not include obvious word-stems or close variants of answer content words (e.g. if the answer is "Painters", do not use "paint", "painting", or "painted" in the question).
   - Do not include translations or alternate-language forms of answer content words.
   - Rephrase the clue using synonyms, definitions, descriptions, or context clues so a contestant must infer the answer rather than read it back.
-- Final Jeopardy should be hard but fair, and follows the same no-overlap rule above.
-- Output ONLY valid JSON in this exact shape, no commentary, no markdown fences:
+- Output ONLY valid JSON in the exact shape specified below, no commentary, no markdown fences.`;
+
+const partPrompts = {
+  jeopardy: `${sharedRules}
+
+Generate a "Jeopardy" round: 6 categories, each with 5 clues (values 200, 400, 600, 800, 1000), in increasing difficulty. The 6 category names must all be unique.
+
+Output shape:
 
 {
   "jeopardy": [
@@ -44,7 +45,15 @@ RULES:
       { "question": "<1000-tier clue>", "answer": "<answer>", "value": 1000 }
     ] }
     // ...exactly 6 categories
-  ],
+  ]
+}`,
+  double: `${sharedRules}
+
+Generate a "Double Jeopardy" round: 6 categories, each with 5 clues (values 400, 800, 1200, 1600, 2000), in increasing difficulty. The 6 category names must all be unique. Pick deeper, more advanced, or more niche category angles than a typical first-round board would use.
+
+Output shape:
+
+{
   "double": [
     { "name": "<category>", "clues": [
       { "question": "<400-tier clue>", "answer": "<answer>", "value": 400 },
@@ -54,24 +63,102 @@ RULES:
       { "question": "<2000-tier clue>", "answer": "<answer>", "value": 2000 }
     ] }
     // ...exactly 6 categories
-  ],
+  ]
+}`,
+  final: `${sharedRules}
+
+Generate a single "Final Jeopardy" clue: one category, one challenging clue, one factual answer. It should be hard but fair, and follows the same no-overlap rule above. If the THEME contains two topics joined by "+", the clue must connect or blend both topics.
+
+Output shape:
+
+{
   "final": {
     "category": "<category>",
     "question": "<single hard clue>",
     "answer": "<single factual answer>"
   }
-}`;
+}`,
+} as const;
+
+type Part = keyof typeof partPrompts;
+
+function isPart(value: unknown): value is Part {
+  return typeof value === "string" && value in partPrompts;
+}
+
+const suggestPrompt = `You suggest trivia topics for a Jeopardy-style party game. Output ONLY valid JSON, no commentary, no markdown fences.
+
+Return exactly:
+{ "jeopardy": "<topic>", "double": "<topic>" }
+
+RULES:
+- Each topic is 2 to 5 words, broad and fun, something a group of friends could play.
+- The two topics must be unrelated to each other.
+- "double" should be a bit more advanced or niche than "jeopardy".
+- Do not repeat or closely rephrase any topic in the user's "avoid" list.
+- Vary the subjects widely: history, science, pop culture, geography, sports, food, language, and so on.`;
 
 export async function POST(req: NextRequest) {
   try {
-    const { theme, teams } = (await req.json()) as {
+    const { theme, teams, part, avoid } = (await req.json()) as {
       theme?: string;
       teams?: string[];
+      part?: string;
+      avoid?: string[];
     };
+
+    if (part === "suggest") {
+      const avoidList = Array.isArray(avoid)
+        ? avoid.filter((t) => typeof t === "string" && t.trim().length > 0)
+        : [];
+      const response = await getClient().chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          { role: "system", content: suggestPrompt },
+          {
+            role: "user",
+            content: JSON.stringify({
+              avoid: avoidList,
+              seed: Math.random().toString(36).slice(2),
+            }),
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const content = response.choices[0]?.message?.content ?? null;
+      let parsed: { jeopardy?: unknown; double?: unknown } = {};
+      try {
+        parsed = content ? JSON.parse(content) : {};
+      } catch {
+        parsed = {};
+      }
+      if (
+        typeof parsed.jeopardy !== "string" ||
+        typeof parsed.double !== "string" ||
+        !parsed.jeopardy.trim() ||
+        !parsed.double.trim()
+      ) {
+        return NextResponse.json(
+          { error: "Model returned topics in an unexpected shape." },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({
+        jeopardy: parsed.jeopardy.trim(),
+        double: parsed.double.trim(),
+      });
+    }
 
     if (!theme || typeof theme !== "string") {
       return NextResponse.json(
         { error: "Missing required field: theme" },
+        { status: 400 },
+      );
+    }
+
+    if (!isPart(part)) {
+      return NextResponse.json(
+        { error: "Missing or invalid field: part (jeopardy | double | final)" },
         { status: 400 },
       );
     }
@@ -84,7 +171,7 @@ export async function POST(req: NextRequest) {
     const response = await getClient().chat.completions.create({
       model: "gpt-5-mini",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: partPrompts[part] },
         { role: "user", content: userPayload },
       ],
       response_format: { type: "json_object" },
@@ -106,4 +193,4 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export const maxDuration = 120;
+export const maxDuration = 300;

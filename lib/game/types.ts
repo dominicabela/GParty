@@ -19,6 +19,8 @@ export type FinalPhase =
 
 export type DailyDoublePhase = "splash" | "wager" | "ready";
 
+export type CluePhase = "reading" | "scoring";
+
 export type Clue = {
   question: string;
   answer: string;
@@ -67,12 +69,15 @@ export type GameState = {
   data: RoundData | null;
   selected: Selection | null;
   pendingSelection: Selection | null;
+  cluePhase: CluePhase;
   ddPhase: DailyDoublePhase;
   ddWager: number;
   ddTeamId: string | null;
   finalPhase: FinalPhase;
   finalWagers: Record<string, number>;
   finalAnswers: Record<string, FinalAnswer>;
+  finalTimer: number;
+  finalTimerRunning: boolean;
   loadingError: string | null;
 };
 

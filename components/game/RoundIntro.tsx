@@ -1,11 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 import { useGame } from "./GameProvider";
 
 export function RoundIntro() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const isJeopardy = state.round === "jeopardy";
 
   return (
@@ -27,9 +28,11 @@ export function RoundIntro() {
         </p>
       </div>
 
-      <Button size="lg" onClick={() => dispatch({ type: "BEGIN_ROUND" })}>
-        Start the round
-      </Button>
+      {!isViewer ? (
+        <Button size="lg" onClick={() => dispatch({ type: "BEGIN_ROUND" })}>
+          Start the round
+        </Button>
+      ) : null}
     </div>
   );
 }

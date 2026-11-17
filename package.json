@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "review": "node scripts/review-board.mjs"
   },
   "engines": {
     "node": ">=21.0.0"
@@ -15,6 +16,7 @@
     "@radix-ui/react-collapsible": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.0",
     "clsx": "^2.1.1",
+    "convex": "^1.46.0",
     "lucide-react": "^0.309.0",
     "next": "14.0.4",
     "openai": "^6.0.0",

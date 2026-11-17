@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import { useGame } from "./GameProvider";
 
 export function DailyDouble() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, role } = useGame();
+  const isViewer = role === "viewer";
   const [wagerInput, setWagerInput] = useState<string>("");
 
   useEffect(() => {
@@ -33,23 +34,26 @@ export function DailyDouble() {
           >
             Daily Double!
           </h1>
-          <p className="mt-6 font-display text-base uppercase tracking-widest text-clue-text/80">
-            Pick the team that found it
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            {state.teams.map((t) => (
-              <Button
-                key={t.id}
-                size="lg"
-                onClick={() => dispatch({ type: "DD_PICK_TEAM", teamId: t.id })}
-              >
-                {t.name}
-                <span className="ml-2 text-sm font-normal opacity-80">
-                  ${t.score.toLocaleString()}
+          {team ? (
+            <>
+              <p className="mt-6 font-display text-base uppercase tracking-widest text-clue-text/80">
+                The random draw goes to
+              </p>
+              <div className="animate-fade-in mt-3 font-display text-4xl uppercase tracking-wider text-jeopardy-cream sm:text-5xl">
+                {team.name}
+                <span className="ml-3 text-2xl font-normal text-jeopardy-cream/70 sm:text-3xl">
+                  ${team.score.toLocaleString()}
                 </span>
+              </div>
+            </>
+          ) : null}
+          {!isViewer ? (
+            <div className="mt-8">
+              <Button size="lg" onClick={() => dispatch({ type: "DD_TO_WAGER" })}>
+                Place the wager
               </Button>
-            ))}
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -65,6 +69,12 @@ export function DailyDouble() {
           <p className="mt-2 text-sm uppercase tracking-widest text-clue-text/70">
             Min ${minWager} · Max ${cap.toLocaleString()}
           </p>
+          {isViewer ? (
+            <p className="mt-6 animate-pulse text-sm uppercase tracking-[0.3em] text-jeopardy-cream/70">
+              Placing the wager...
+            </p>
+          ) : null}
+          {!isViewer ? (
           <form
             className="mt-6 flex items-center justify-center gap-3"
             onSubmit={(e) => {
@@ -92,6 +102,7 @@ export function DailyDouble() {
               Lock it in
             </Button>
           </form>
+          ) : null}
         </div>
       ) : null}
 
@@ -106,11 +117,13 @@ export function DailyDouble() {
           >
             ${state.ddWager.toLocaleString()}
           </div>
-          <div className="mt-8">
-            <Button size="lg" onClick={() => dispatch({ type: "DD_REVEAL" })}>
-              Reveal the clue
-            </Button>
-          </div>
+          {!isViewer ? (
+            <div className="mt-8">
+              <Button size="lg" onClick={() => dispatch({ type: "DD_REVEAL" })}>
+                Reveal the clue
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
